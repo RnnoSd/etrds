@@ -31,6 +31,5 @@ DESCRIPTION
 ```
 
 # Brief Description of our goal with **ShowCommand**
-+ [ ] Use `batcat` to print with syntax-highlighted content of a collection of FILEs to the terminal. Including the implementations of standard input. [[catFunctionality|The implementation details are here!!]]
-+ [ ] Implement the output redirection as plain file content whenever its output is meant to go somewhere else a non-interactive terminal. [[catRedirectionFunctionality|The implementation details are here!!]]
++ [x] Use `batcat` to print with syntax-highlighted content of a collection of FILEs to the terminal. Including the implementations of standard input. [[catFunctionality|The implementation details are here!!]]
 + [ ] Implement `batcat` feature of displaying differences using `git`. Extend the capabilities of the OPTION **-d, --diff** from `batcat`. [[gitDiffFunctionality|The implementation details are here!!]]
