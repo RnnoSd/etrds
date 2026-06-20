@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 
+	"github.com/RnnoSd/etrds/internal/collect"
 	"github.com/RnnoSd/etrds/internal/show"
 	"github.com/spf13/cobra"
 )
@@ -27,21 +29,34 @@ var rootCmd = &cobra.Command{
 //}
 
 var showCmd = &cobra.Command{
-	Use:   "show [file]",
+	Use:   "show FILE",
 	Short: "show",
 	Long:  "show still not done",
 	Args:  cobra.ArbitraryArgs,
 	Run:   show.Run,
 }
 
+var collectCmd = &cobra.Command{
+	Use:   "collect QUERYNAME",
+	Short: "collect",
+	Long:  "collect still not done",
+	Args:  cobra.ArbitraryArgs,
+	Run:   collect.Run,
+}
+
 func init() {
 	// rootCmd.AddCommand(statusCmd)
+
+	// show subcommand Implementation
 	rootCmd.AddCommand(showCmd)
 	showCmd.Flags().BoolVarP(&plain, "plain", "p", false, "Display in plain style")
+
+	// collect subcommand Implementation
+	rootCmd.AddCommand(collectCmd)
 }
 
 func run(cmd *cobra.Command, args []string) {
-	fmt.Println("Command Received")
+	fmt.Println("Implment a start-guide and greetings")
 }
 
 //func status(cmd *cobra.Command, args []string) {
@@ -63,7 +78,10 @@ func run(cmd *cobra.Command, args []string) {
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			os.Exit(exitErr.ExitCode())
+		}
+
 		os.Exit(1)
 	}
 }
