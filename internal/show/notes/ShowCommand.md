@@ -1,11 +1,11 @@
 A sub-command which displays to the console the query which is going to be made by `etrds`.
 
-The principal action is to print to print as many `queryERTDS` as given in the arguments. Since this is a wrapper, we are going to use another useful command which is `batcat`.
+The principal action is to print as many `queryERTDS` as given in the arguments. Since this is a wrapper, we are going to use another useful command which is `batcat`.
 
 >[!tip] Building Recommendations
 > Try to replicate the manual page of commands you use. It is a way to get in touch and keep in mind the standards.
 
-# Brief Batcat Descripction
+# Brief `batcat` Description
 ```less
 BATCAT(1)				           General commands Manual  				         BATCAT(1)
 
@@ -30,6 +30,6 @@ DESCRIPTION
        replacement for cat(1) and fall back to printing the plain file contents.
 ```
 
-# Brief Description of our goal with **ShowCommand**
+# Goal Overall
 + [x] Use `batcat` to print with syntax-highlighted content of a collection of FILEs to the terminal. Including the implementations of standard input. [[catFunctionality|The implementation details are here!!]]
 + [ ] Implement `batcat` feature of displaying differences using `git`. Extend the capabilities of the OPTION **-d, --diff** from `batcat`. [[gitDiffFunctionality|The implementation details are here!!]]
