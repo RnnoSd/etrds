@@ -28,7 +28,7 @@ const (
 type Consult struct {
 	Name              string
 	Query             string
-	LocalDBLocation   string
+	LocalDBConnection *sql.DB
 	FetchDBType       string
 	FetchDBConnection *sql.DB
 	State             State
@@ -56,4 +56,8 @@ func NewETRDSSession(sessionName string, initialConsults map[string]Consult) (et
 		Name:     sessionName,
 		Consults: initializedConsults,
 	}, err
+}
+
+func GetSession() Session {
+
 }

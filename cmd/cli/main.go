@@ -45,8 +45,6 @@ var collectCmd = &cobra.Command{
 }
 
 func init() {
-	// rootCmd.AddCommand(statusCmd)
-
 	// show subcommand Implementation
 	rootCmd.AddCommand(showCmd)
 	showCmd.Flags().BoolVarP(&plain, "plain", "p", false, "Display in plain style")
@@ -58,23 +56,6 @@ func init() {
 func run(cmd *cobra.Command, args []string) {
 	fmt.Println("Implment a start-guide and greetings")
 }
-
-//func status(cmd *cobra.Command, args []string) {
-//	if len(args) == 0 {
-//		entries, err := os.ReadDir("./")
-//		if err != nil {
-//			fmt.Printf("config fetch error: %v\n", err)
-//		}
-//		for _, file := range entries {
-//			info, err := file.Info()
-//			if err != nil {
-//				continue
-//			}
-//
-//			fmt.Printf("%10d bytes %s\n", info.Size(), file.Name())
-//		}
-//	}
-//}
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
