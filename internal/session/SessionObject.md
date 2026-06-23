@@ -1,0 +1,1 @@
+A session Object is on the core of `etrds`. Session hold the information about the storage data is, 
