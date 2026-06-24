@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
+
+	"github.com/apache/arrow-go/v18/parquet/variant"
 )
 
 type FetchOptions int
@@ -22,33 +25,45 @@ type FetchState struct {
 	Name FetchOptions
 }
 
-func (cons Consult) ExtractFetchQUERY() (string, error) {
-	var fetchQuery string
-	strToParse := cons.Query
+func (sess *aliveSession) ExtractFetchQUERIES(name string) ([]string, error) {
+	var fetchQueries []string
+	strToParse := string(sess.Consults[name].Content)
+	defer sess.Consults[name].Queued()
+	queries := strings.Split(strToParse, ";")
 
-	deriveRegex := regexp.MustCompile(`^#\[derive\(fetch\.([a-zA-Z]+)\)\]`)
+	for _, query := range queries {
+		var fetchQuery string
 
-	if deriveExps := deriveRegex.FindAllStringSubmatch(strToParse, -1); len(deriveExps) > 0 {
-		fetchedStr := deriveExps[0][1]
+		dbType := sess.Fetching[name].Type
+		dbDSN := sess.Fetching[name].DSN
 
-		switch fetchedStr {
-		case "LightFetch":
-			var ParseErr error
-			fetchQuery, ParseErr = ParseSELECTlightFetch(deriveRegex.ReplaceAllLiteralString(strToParse, ""), cons.FetchDBType, cons.FetchDBConnection)
-			if ParseErr != nil {
-				return "", ParseErr
+		deriveRegex := regexp.MustCompile(`^s*#\[derive\(fetch\.([a-zA-Z]+)\)\]`)
+
+		if deriveExps := deriveRegex.FindAllStringSubmatch(query, -1); len(deriveExps) > 0 {
+			fetchedStr := deriveExps[0][1]
+
+			switch fetchedStr {
+			case "LightFetch":
+				var ParseErr error
+				fetchQuery, ParseErr = ParseSELECTlightFetch(deriveRegex.ReplaceAllLiteralString(query, ""), dbType, dbDSN)
+				if ParseErr != nil {
+					return []string{""}, ParseErr
+				}
+			case "FullFetch":
+				fetchQuery = deriveRegex.ReplaceAllLiteralString(query, "")
+			default:
+				err := fmt.Errorf("not valid fetching workflow option")
+				return []string{""}, err
 			}
-		case "FullFetch":
-			fetchQuery = deriveRegex.ReplaceAllLiteralString(strToParse, "")
-		default:
-			err := fmt.Errorf("not valid fetching workflow option")
-			return "", err
+		} else {
+			fetchQuery = ""
 		}
-	} else {
-		fetchQuery = ""
+		if !slices.Conatins(fetchQueries, fetchQuery) {
+			fetchQueries = append(fetchQueries, fetchQuery)
+		}
 	}
 
-	return fetchQuery, nil
+	return fetchQueries, nil
 }
 
 const (
@@ -100,7 +115,7 @@ func unmarshalAndBuild[T QueryExplain](jsonRaw []byte) (string, error) {
 	return fmt.Sprintf("SELECT %s WHERE %s;", columns, condition), nil
 }
 
-func ParseSELECTlightFetch(q string, dbType string, dbConnection *sql.DB) (string, error) {
+func ParseSELECTlightFetch(q string, dbType string, dsn string) (string, error) {
 	var statementSELECTWHERE string
 	var jsonRaw []byte
 	var err error
