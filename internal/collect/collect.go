@@ -4,128 +4,125 @@ Package collect [LLM-manifest]
 package collect
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
+	"sync"
 
-	"github.com/RnnoSd/etrds/internal/config"
+	"github.com/RnnoSd/etrds/internal/cache"
 	"github.com/RnnoSd/etrds/internal/session"
 	"github.com/spf13/cobra"
 )
 
 func Run(cmd *cobra.Command, args []string) {
-	s := session.etrdsSession()
-	endRegexSQL := regexp.MustCompile(`.\.sql$`)
+	var (
+		s   *session.AliveSession
+		err error
+	)
+	// Here we do bring up to live a cached session or create a new-one
+	// Depending a flag (LIKE git switch)
+	create, _ := cmd.Flags().GetBool("create")
+	createOrReset, _ := cmd.Flags().GetBool("createOrReset")
+	switch {
+	case create:
+		cs := cache.NewCachedSession(args[0])
 
-	for _, arg := range args {
-		if sqlPattern := endRegexSQL.FindAllStringSubmatch(arg, -1); len(sqlPattern) > 0 {
-			sqlQueries, err := os.ReadFile(arg)
+		s, err = session.SetUpSessionCached(cs)
+		cs.Save()
+	case createOrReset:
+		cs := cache.NewCachedSession(args[0])
+		s, err = session.SetUpSessionCached(cs)
+		if err := os.Remove(cs.WritingPath); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "error al resetear la session")
+
+			return
+		}
+
+		s, err = session.SetUpSessionCached(cs)
+		cs.Save()
+	default:
+		cs, rerr := cache.ReadCachedSession(args[0])
+		if rerr != nil {
+			fmt.Fprintf(os.Stderr, "error al leer una session en el cache: %v\n", rerr)
+			return
+		}
+		s, err = session.SetUpSessionCached(cs)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error al iniciar la session: %v\n", err)
+		return
+	}
+
+	// The session owns the single read_write connection to the local store;
+	// release it when we're done.
+	defer s.Close()
+
+	// Track the fetch goroutines so we can wait for every write to finish before
+	// the session connection closes.
+	var wg sync.WaitGroup
+
+	for _, arg := range args[1:] {
+		if consult, ok := s.Consults[arg]; ok {
+			consultContent := consult.Content
+			consultFormatingName, err := session.ExtractFormat(string(consultContent))
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "read file error %s: %v\n", arg, err)
+				fmt.Fprintf(os.Stderr, "error en parsing: %v", err)
 			}
 
-			Queries := strings.Split(string(sqlQueries), ";")
+			Queries := strings.Split(string(consultContent), ";")
 
 			for _, query := range Queries {
-				consult := session.Consult{
-					Name:              endRegexSQL.ReplaceAllLiteralString(arg, ""),
-					Query:             query,
-					LocalDBConnection: config.GetDBConnection(),
-					FetchDBType:       config.GetFetchDBType(),
-					FetchDBConnection: config.GetFetchDBType(),
-					State:             config.GetFetchDBType(),
-				}
-
-				fetchQuery, err := consult.ExtractFetchQUERY()
+				DSN := s.Fetching[arg].DSN
+				DBType := s.Fetching[arg].Type
+				// EXPLAIN runs against the source (metadata); the result is a
+				// SELECT qualified with the ATTACH catalog (arg) so the data
+				// itself is read through the attached source on s.DB.
+				fetchQuery, err := session.ParseSELECTlightFetch(query, DBType, DSN, arg)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "parsing Fetch query %s: %v\n", arg, err)
+					continue
 				}
+				wg.Add(1)
 				go func() {
-					sqlRows, err := consult.FetchDBConnection.Query(fetchQuery)
+					defer wg.Done()
+
+					queryName, err := session.ExtractNamedQuery(query, consultFormatingName)
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "fetch information error %s: %v\n", arg, err)
+						fmt.Fprintf(os.Stderr, "parsing Fetch query %s: %v\n", arg, err)
+						return
 					}
-					tableLocation := fmt.Sprintf(`backups.%s`, consult.Name)
-					err := uploadLocalDBLocation(sqlRows, consult.LocalDBConnection, tableLocation)
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "upload information local Database %s: %v\n", arg, err)
+
+					// Read through the ATTACHed source and write into the local
+					// store in a single server-side statement (no round-trip
+					// through Go memory).
+					ctx := context.Background()
+					schema := quoteIdent(arg + "Backups")
+					table := quoteIdent(queryName)
+
+					if _, err := s.DB.ExecContext(ctx, "CREATE SCHEMA IF NOT EXISTS "+schema); err != nil {
+						fmt.Fprintf(os.Stderr, "creando schema destino %s: %v\n", arg, err)
+						return
+					}
+					create := fmt.Sprintf("CREATE OR REPLACE TABLE %s.%s AS %s", schema, table, fetchQuery)
+					if _, err := s.DB.ExecContext(ctx, create); err != nil {
+						fmt.Fprintf(os.Stderr, "materializando %s.%s: %v\n", schema, table, err)
 					}
 				}()
 			}
 		} else {
-			consult := s.Consults[arg]
-			fetchQuery, err := consult.ExtractFetchQUERY()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "fetch information error %s: %v\n", arg, err)
-			}
-			go func() {
-				sqlRows, err := consult.FetchDBConnection.Query(fetchQuery)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "fetch information error %s: %v\n", arg, err)
-				}
-				uploadLocalDBLocation(sqlRows)
-			}()
+			fmt.Fprintf(os.Stderr, "%v is not a registered consult in the current session %v\n", arg, s.ID)
+			wg.Wait()
+			return
 		}
 	}
+
+	// Wait for every fetch/write goroutine before the deferred dbWrite.Close().
+	wg.Wait()
 }
 
-func uploadLocalDBLocation(sqlRows *sql.Rows, db *sql.DB, tableDestination string) error {
-	columnas, err := sqlRows.Columns()
-	if err != nil {
-		return fmt.Errorf("error al obtener columnas de origen: %w", err)
-	}
-	numColumnas := len(columnas)
-	placeholders := make([]string, numColumnas)
-	for i := range placeholders {
-		placeholders[i] = "?"
-	}
-
-	insertQuery := fmt.Sprintf(
-		"INSERT INTO %s (%s) VALUES (%s)",
-		tableDestination,
-		strings.Join(columnas, ", "),
-		strings.Join(placeholders, ", "),
-	)
-
-	stmt, err := db.Prepare(insertQuery)
-	if err != nil {
-		return fmt.Errorf("error al preparar inserción en destino: %w", err)
-	}
-	defer stmt.Close()
-
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	txStmt := tx.Stmt(stmt)
-
-	valores := make([]interface{}, numColumnas)
-	punterosValores := make([]interface{}, numColumnas)
-	for i := range valores {
-		punterosValores[i] = &valores[i]
-	}
-
-	for sqlRows.Next() {
-		if err := sqlRows.Scan(punterosValores...); err != nil {
-			return fmt.Errorf("error escaneando fila de origen: %w", err)
-		}
-
-		if _, err := txStmt.Exec(valores...); err != nil {
-			return fmt.Errorf("error insertando fila en destino: %w", err)
-		}
-	}
-
-	if err := sqlRows.Err(); err != nil {
-		return fmt.Errorf("error en el lector de filas: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("error al hacer commit en el destino: %w", err)
-	}
-
-	return nil
+// quoteIdent wraps an identifier in double quotes for safe use as a SQL schema
+// or table name, escaping any embedded double quotes.
+func quoteIdent(s string) string {
+	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }

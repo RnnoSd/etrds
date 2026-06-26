@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var create bool
+var createOrReset bool
 var plain bool
 
 var rootCmd = &cobra.Command{
@@ -37,7 +39,7 @@ var showCmd = &cobra.Command{
 }
 
 var collectCmd = &cobra.Command{
-	Use:   "collect QUERYNAME",
+	Use:   "etrds collect SESSION-ID [consults...]",
 	Short: "collect",
 	Long:  "collect still not done",
 	Args:  cobra.ArbitraryArgs,
@@ -51,6 +53,8 @@ func init() {
 
 	// collect subcommand Implementation
 	rootCmd.AddCommand(collectCmd)
+	showCmd.Flags().BoolVarP(&create, "create", "c", false, "Create a new session")
+	showCmd.Flags().BoolVarP(&createOrReset, "createOrReset", "C", false, "Create a new session or reset an existing cached session")
 }
 
 func run(cmd *cobra.Command, args []string) {

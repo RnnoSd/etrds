@@ -1,11 +1,12 @@
 package cache
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"gopkg.in/yaml.v3"
 )
 
 const etrdsDirName = ".etrds"
@@ -15,8 +16,7 @@ var (
 	ErrSessionNotFound = errors.New("session not found in cache")
 )
 
-// CachedSession is the inert, serializable form of a session. It holds only the id, the consults, and the specs needed to REOPEN the
-// connections when the session is promoted to an aliveSession.
+// Cache is the on-disk aggregate of all cached sessions.
 type Cache struct {
 	CachedSessions []*CachedSession `yaml:"cached_sessions"`
 }
@@ -32,6 +32,8 @@ type FetchingStruct struct {
 	DSN  string `yaml:"dsn"`
 }
 
+// CachedSession is the inert, serializable form of a session. It holds only the id, the consults, and the specs needed to REOPEN the
+// connections when the session is promoted to an aliveSession.
 type CachedSession struct {
 	ID          string                    `yaml:"id"`
 	WritingPath string                    `yaml:"writing_path"`
@@ -74,6 +76,17 @@ func ProjectRoot() string {
 	return filepath.Dir(projectroot)
 }
 
+// NewCachedSession returns a brand-new, empty session spec (not yet persisted).
+func NewCachedSession(id string) *CachedSession {
+	return &CachedSession{
+		ID:          id,
+		WritingPath: filepath.Join(ProjectRoot(), etrdsDirName, "sessions", id+".duckdb"),
+		ReadPaths:   map[string]string{},
+		Fetching:    map[string]FetchingStruct{},
+		Consults:    map[string]CachedConsult{},
+	}
+}
+
 func ReadCachedSession(id string) (*CachedSession, error) {
 	dir, err := findEtrdsDir()
 	if err != nil {
@@ -89,18 +102,18 @@ func ReadCachedSession(id string) (*CachedSession, error) {
 	}
 
 	var cs CachedSession
-	if err := json.Unmarshal(raw, &cs); err != nil {
+	if err := yaml.Unmarshal(raw, &cs); err != nil {
 		return nil, fmt.Errorf("corrupt cache for session %q: %w", id, err)
 	}
 	return &cs, nil
 }
 
-func (cs *CachedSession) save() error {
+func (cs *CachedSession) Save() error {
 	dir, err := findEtrdsDir()
 	if err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(cs, "", "  ")
+	raw, err := yaml.Marshal(cs)
 	if err != nil {
 		return err
 	}
