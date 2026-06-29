@@ -58,7 +58,7 @@ func Run(cmd *cobra.Command, args []string) {
 
 			err = runBatcat.Run()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error ejecutando batcat: %v\n", err)
+				fmt.Fprintf(os.Stderr, "error ejecutando batcat: %v\n", err)
 			}
 		}
 
@@ -67,7 +67,7 @@ func Run(cmd *cobra.Command, args []string) {
 			runBatcat.Stdin = os.Stdin
 
 			if err := runBatcat.Run(); err != nil {
-				fmt.Fprintf(os.Stderr, "Wait error: %v\n", err)
+				fmt.Fprintf(os.Stderr, "error de espera: %v\n", err)
 			}
 		}
 
@@ -75,7 +75,7 @@ func Run(cmd *cobra.Command, args []string) {
 		runBatcat = newBatcatCmd(true, stdinArgs...)
 		err := streamFromScanner(cmd, runBatcat)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Wait error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "error de espera: %v\n", err)
 		}
 	}
 }
@@ -95,7 +95,7 @@ func streamFromScanner(cmd *cobra.Command, run *exec.Cmd) error {
 
 	err = run.Start()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error ejecutando batcat: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error ejecutando batcat: %v\n", err)
 		return err
 	}
 
@@ -113,7 +113,7 @@ func streamFromScanner(cmd *cobra.Command, run *exec.Cmd) error {
 		_ = f.Sync()
 	}
 	if err := run.Wait(); err != nil {
-		fmt.Fprintf(os.Stderr, "Wait error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error de espera: %v\n", err)
 		return err
 	}
 
